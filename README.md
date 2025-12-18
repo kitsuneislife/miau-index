@@ -510,19 +510,6 @@ Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para ma
 - Kitsu
 - Comunidade de anime
 
-## 🔮 Roadmap
-
-- [ ] Implementação completa dos provedores MAL, AniList e Kitsu
-- [ ] Suporte a persistência em banco de dados (PostgreSQL, MongoDB)
-- [ ] API REST para acesso aos dados
-- [ ] Sistema de cache distribuído (Redis)
-- [ ] Webhooks para atualizações em tempo real
-- [ ] Interface web para visualização
-- [ ] Suporte a mais fontes de dados (AniDB, TMDB)
-- [ ] Sistema de recommendations
-- [ ] Análise de sentimento em reviews
-- [ ] GraphQL API
-
 ## 📧 Contato
 
 Para dúvidas ou sugestões, abra uma issue no GitHub.

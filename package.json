@@ -1,6 +1,6 @@
 {
   "name": "@kitsuneislife/miau-index",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A powerful TypeScript anime indexer that aggregates and unifies anime data from multiple sources",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

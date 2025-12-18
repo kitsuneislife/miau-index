@@ -20,6 +20,9 @@ jest.config.js
 .gitignore
 .github/
 
+# Internal documentation
+.github/copilot-instructions.md
+
 # Documentation (keep README.md)
 docs/
 *.md

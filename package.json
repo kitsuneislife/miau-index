@@ -4,7 +4,13 @@
   "description": "A powerful TypeScript anime indexer that aggregates and unifies anime data from multiple sources",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
+    "prepublishOnly": "npm run build && npm test",
     "build": "tsc",
     "dev": "ts-node src/index.ts",
     "start": "node dist/index.js",
@@ -13,7 +19,8 @@
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\""
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "validate": "node scripts/validate-package.js"
   },
   "keywords": [
     "anime",
@@ -21,10 +28,26 @@
     "myanimelist",
     "anilist",
     "kitsu",
-    "typescript"
+    "typescript",
+    "torrent",
+    "nyaa",
+    "aggregator",
+    "api",
+    "unifier"
   ],
   "author": "kitsuneislife",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kitsuneislife/miau-index.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kitsuneislife/miau-index/issues"
+  },
+  "homepage": "https://github.com/kitsuneislife/miau-index#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
   "devDependencies": {
     "@types/jest": "^29.5.11",
     "@types/node": "^20.10.6",

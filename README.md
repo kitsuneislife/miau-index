@@ -1,102 +1,155 @@
 # 🐱 Miau-Index
 
-> Um indexador de animes poderoso e robusto em TypeScript que agrega e unifica dados de múltiplas fontes
+> A powerful TypeScript anime indexer that aggregates and unifies anime data from multiple sources
 
+[![npm version](https://img.shields.io/npm/v/@kitsuneislife/miau-index.svg)](https://www.npmjs.com/package/@kitsuneislife/miau-index)
+[![npm downloads](https://img.shields.io/npm/dm/@kitsuneislife/miau-index.svg)](https://www.npmjs.com/package/@kitsuneislife/miau-index)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://img.shields.io/badge/tests-113%2F115%20passing-brightgreen.svg)](https://github.com/kitsuneislife/miau-index)
 
-## 📋 Sobre
+## 📋 About
 
-Miau-Index é uma biblioteca TypeScript projetada para agregar, unificar e normalizar dados de anime de múltiplas fontes externas como MyAnimeList, AniList, Kitsu e outras. O projeto oferece uma arquitetura robusta e escalável para gerenciar informações completas sobre animes, incluindo:
+Miau-Index is a powerful TypeScript library designed to aggregate, unify, and normalize anime data from multiple external sources like MyAnimeList, AniList, Kitsu, and more. The project offers a robust and scalable architecture to manage complete anime information, including:
 
-- 📺 Informações básicas (título, tipo, status, episódios)
-- ⭐ Avaliações e rankings de múltiplas fontes
-- 📝 Sinopses e descrições
-- 🎭 Gêneros, temas e demografias
-- 🎬 Temporadas e episódios detalhados
-- 👥 Personagens, dubladores e equipe
-- 🏢 Estúdios e produtoras
-- 🔗 Relações entre animes (sequels, prequels, etc.)
+- 📺 Basic information (title, type, status, episodes)
+- ⭐ Ratings and rankings from multiple sources
+- 📝 Synopses and descriptions
+- 🎭 Genres, themes, and demographics
+- 🎬 Detailed seasons and episodes
+- 👥 Characters, voice actors, and staff
+- 🏢 Studios and producers
+- 🔗 Anime relations (sequels, prequels, etc.)
+- 🧲 **NEW: Torrent indexing from Nyaa.si** (optional extension)
 
-## ✨ Características
+## ✨ Features
 
-### 🌟 Prioridade: Fontes Abertas e Livres
-- **Zero API Keys Necessárias**: Funciona perfeitamente sem nenhuma configuração
-- **AniList**: API GraphQL pública e totalmente gratuita
-- **Kitsu**: API JSON:API pública e totalmente gratuita
-- **MyAnimeList**: OPCIONAL - apenas se você tiver/quiser usar API key
-- **Preferência Automática**: Prioriza fontes abertas por padrão
+### 🌟 Priority: Open and Free Sources
+- **Zero API Keys Required**: Works perfectly without any configuration
+- **AniList**: Public and completely free GraphQL API
+- **Kitsu**: Public and completely free JSON:API
+- **MyAnimeList**: OPTIONAL - only if you have/want to use an API key
+- **Automatic Preference**: Prioritizes open sources by default
 
 ### Core Features
-- **Unificação de Dados**: Combina informações de múltiplas APIs para criar um registro completo e preciso
-- **Type-Safe**: Totalmente tipado com TypeScript para máxima segurança
-- **Extensível**: Arquitetura modular permite adicionar novos provedores facilmente
+- **Data Unification**: Combines information from multiple APIs to create a complete and accurate record
+- **Type-Safe**: Fully typed with TypeScript for maximum safety
+- **Extensible**: Modular architecture allows easy addition of new providers
+- **🆕 Nyaa Extension**: Optional torrent indexing with quality detection, metadata extraction, and smart filtering
 
-### Validação e Segurança
-- **Schemas Zod**: Validação runtime robusta para todos os modelos de dados
-- **Type Guards**: Funções auxiliares para verificação de tipos
-- **Error Handling**: Classes de erro customizadas para melhor tratamento
+### Validation and Security
+- **Zod Schemas**: Robust runtime validation for all data models
+- **Type Guards**: Helper functions for type checking
+- **Error Handling**: Custom error classes for better error management
+- **Input Sanitization**: Protection against injection attacks
 
 ### Performance
-- **Cache Service**: Sistema de cache em memória com TTL configurável
-- **Rate Limiting**: Controle inteligente de taxa de requisições
-- **Retry Logic**: Retry automático com backoff exponencial
+- **Cache Service**: In-memory caching system with configurable TTL
+- **Rate Limiting**: Intelligent request rate control
+- **Retry Logic**: Automatic retry with exponential backoff
+- **Timeout Configuration**: Configurable request timeouts
 
 ### Developer Experience  
-- **Logging**: Sistema de logs configurável com múltiplos níveis
-- **Helper Utilities**: Mais de 15 funções auxiliares prontas para uso
-- **Comprehensive Tests**: 62+ testes automatizados
-- **Full Documentation**: Documentação completa de API e guias
+- **Logging**: Configurable logging system with multiple levels
+- **Helper Utilities**: 15+ ready-to-use helper functions
+- **Comprehensive Tests**: 113+ automated tests (98.3% passing)
+- **Full Documentation**: Complete API documentation and guides
+- **Metrics & Observability**: Built-in metrics tracking for monitoring
 
-## 🚀 Instalação
+## 🚀 Installation
 
 ```bash
-npm install miau-index
+npm install @kitsuneislife/miau-index
 ```
 
-## 📖 Uso Básico
+### Optional: Nyaa Torrent Extension
+
+```bash
+npm install @kitsuneislife/miau-index @kitsuneislife/nyaa
+```
+
+## 📖 Basic Usage
 
 ```typescript
 import { MiauIndex, DataSource } from '@kitsuneislife/miau-index';
 
-// Inicializar o indexador
-// Funciona SEM API KEYS - usa fontes abertas (AniList, Kitsu)
+// Initialize the indexer
+// Works WITHOUT API KEYS - uses open sources (AniList, Kitsu)
 const miauIndex = new MiauIndex({
-  // Todas as configurações são opcionais!
-  malApiKey: 'your-mal-api-key', // OPCIONAL: apenas se tiver API key do MAL
+  // All settings are optional!
+  malApiKey: 'your-mal-api-key', // OPTIONAL: only if you have MAL API key
   enabledProviders: {
-    myAnimeList: true, // Ignorado se não tiver API key
-    aniList: true,     // ✓ Fonte aberta - SEM API key necessária
-    kitsu: true,       // ✓ Fonte aberta - SEM API key necessária
+    myAnimeList: true, // Ignored if no API key
+    aniList: true,     // ✓ Open source - NO API key needed
+    kitsu: true,       // ✓ Open source - NO API key needed
   },
-  preferOpenSources: true, // Prioriza fontes abertas (padrão: true)
+  preferOpenSources: true, // Prioritize open sources (default: true)
   enableLogging: true,
 });
 
-// Buscar anime específico do AniList
+// Fetch specific anime from AniList
 const anime = await miauIndex.fetchAnime([
   { source: DataSource.ANILIST, id: '5114' }
 ]);
 
 console.log(anime.title.romaji); // "Fullmetal Alchemist: Brotherhood"
-console.log(anime.ratings); // Avaliações com score e votos
+console.log(anime.ratings); // Ratings with score and votes
 
-// Buscar animes por título (busca em todos os providers)
+// Search anime by title (searches all providers)
 const results = await miauIndex.searchAnime('Cowboy Bebop', 10);
 
-// Obter animes da temporada
+// Get seasonal anime
 const winterAnime = await miauIndex.getSeasonalAnime(2024, 'winter');
 
-// Buscar no repositório local
+// Search in local repository
 const localResults = await miauIndex.searchLocal('Naruto', 5);
 
-// Verificar saúde dos providers
+// Check provider health
 const health = await miauIndex.checkProviders();
 console.log(health); // { ANILIST: true, MYANIMELIST: true, ... }
 
-// Estatísticas do repositório
+// Repository statistics
 const stats = await miauIndex.getStats();
-console.log(stats.totalAnime); // Total de animes armazenados
+console.log(stats.totalAnime); // Total stored anime
+```
+
+### 🆕 Nyaa Torrent Extension
+
+```typescript
+import { MiauIndex } from '@kitsuneislife/miau-index';
+import { TorrentQuality } from '@kitsuneislife/miau-index';
+
+// Enable Nyaa extension
+const miauIndex = new MiauIndex({
+  enableNyaa: true, // Enable torrent indexing
+  nyaaOptions: {
+    autoIndex: true,
+    minSeeders: 5,
+    preferredQuality: TorrentQuality.FULL_HD_1080p,
+    enableCache: true,
+    cacheTTL: 3600000, // 1 hour
+    timeout: 30000,
+    maxRetries: 3,
+  },
+});
+
+// Index torrents for an anime
+const torrents = await miauIndex.indexTorrents(anime);
+console.log(`Found ${torrents.length} torrents`);
+
+// Get best torrent for an episode
+const bestTorrent = await miauIndex.getBestTorrent(anime, 1);
+console.log(bestTorrent.magnetLink);
+
+// Search with filters
+const filtered = await miauIndex.searchTorrents(anime, {
+  quality: TorrentQuality.FULL_HD_1080p,
+  minSeeders: 10,
+});
+
+// Get metrics
+const metrics = miauIndex.getNyaaMetrics();
+console.log(`Cache hit rate: ${metrics.cacheHitRate.toFixed(2)}%`);
 ```
 
 ## 🌸 Extensão Nyaa (OPCIONAL)
@@ -380,6 +433,50 @@ miauIndex.registerProvider(novoProvider);
 - KITSU
 - ANIDB
 - TMDB
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+
+### Quick Start for Contributors
+
+1. Fork the repository
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/miau-index.git`
+3. Install dependencies: `npm install`
+4. Create a branch: `git checkout -b feature/my-feature`
+5. Make your changes and add tests
+6. Run tests: `npm test`
+7. Commit: `git commit -m "feat: add my feature"`
+8. Push: `git push origin feature/my-feature`
+9. Open a Pull Request
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [MyAnimeList](https://myanimelist.net/) for anime data
+- [AniList](https://anilist.co/) for GraphQL API
+- [Kitsu](https://kitsu.io/) for JSON:API
+- [Nyaa.si](https://nyaa.si/) for torrent indexing
+
+## 📮 Support
+
+- 📧 Email: support@kitsuneislife.dev
+- 🐛 Issues: [GitHub Issues](https://github.com/kitsuneislife/miau-index/issues)
+- 💬 Discussions: [GitHub Discussions](https://github.com/kitsuneislife/miau-index/discussions)
+
+## 🔗 Links
+
+- [npm Package](https://www.npmjs.com/package/@kitsuneislife/miau-index)
+- [GitHub Repository](https://github.com/kitsuneislife/miau-index)
+- [Documentation](https://github.com/kitsuneislife/miau-index/tree/main/docs)
+- [Changelog](CHANGELOG.md)
+
+---
+
+Made with ❤️ by [kitsuneislife](https://github.com/kitsuneislife)
 
 ## 🧪 Testes
 

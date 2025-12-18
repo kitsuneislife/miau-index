@@ -108,7 +108,7 @@ export class RateLimiter {
    * Start periodic cleanup
    */
   private startCleanup(): void {
-    setInterval(() => {
+    const interval = setInterval(() => {
       const now = Date.now();
       const windowStart = now - this.options.windowMs;
 
@@ -121,6 +121,9 @@ export class RateLimiter {
         }
       }
     }, this.options.windowMs);
+    
+    // Prevent interval from keeping process alive
+    interval.unref();
   }
 
   /**

@@ -147,20 +147,28 @@ export class JikanProvider extends BaseAnimeProvider {
       return cached;
     }
 
-    return this.fetchWithRetry(async () => {
-      const url = `/anime/${externalId}`;
-      const response = await this.httpClient.get<JikanAnimeResponse>(url);
+    try {
+      return await this.fetchWithRetry(async () => {
+        const url = `/anime/${externalId}`;
+        const response = await this.httpClient.get<JikanAnimeResponse>(url);
 
-      if (!response.data) {
+        if (!response.data) {
+          return null;
+        }
+
+        const data = response.data;
+        const anime = this.mapJikanToAnime(data);
+
+        this.cache.set(cacheKey, anime);
+        return anime;
+      });
+    } catch (error: any) {
+      // Handle 404 errors gracefully
+      if (error.response?.status === 404 || error.status === 404) {
         return null;
       }
-
-      const data = response.data;
-      const anime = this.mapJikanToAnime(data);
-
-      this.cache.set(cacheKey, anime);
-      return anime;
-    });
+      throw error;
+    }
   }
 
   async searchAnime(query: string, limit: number = 10): Promise<Anime[]> {

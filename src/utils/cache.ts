@@ -121,7 +121,10 @@ export class CacheService<T = unknown> {
    */
   private startCleanupInterval(): void {
     // Cleanup every 5 minutes
-    setInterval(() => this.cleanup(), 5 * 60 * 1000);
+    const interval = setInterval(() => this.cleanup(), 5 * 60 * 1000);
+    
+    // Prevent interval from keeping process alive
+    interval.unref();
   }
 
   /**

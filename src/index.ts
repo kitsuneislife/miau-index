@@ -13,10 +13,16 @@ export * from './types/common';
 // Providers
 export { BaseAnimeProvider, IAnimeProvider } from './providers/BaseProvider';
 export { MyAnimeListProvider, AniListProvider, KitsuProvider } from './providers';
+export { JikanProvider } from './providers/JikanProvider';
 
 // Repositories
 export { IAnimeRepository, InMemoryAnimeRepository } from './repositories/AnimeRepository';
-export { IEpisodeRepository, InMemoryEpisodeRepository } from './repositories/EpisodeRepository';
+export {
+  IEpisodeRepository,
+  InMemoryEpisodeRepository,
+  ISeasonRepository,
+  InMemorySeasonRepository,
+} from './repositories/EpisodeRepository';
 export { ITorrentRepository, InMemoryTorrentRepository } from './repositories/TorrentRepository'; // Export Torrent repository
 
 // Services

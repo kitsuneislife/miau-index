@@ -1,4 +1,5 @@
 import { Anime } from '../models/Anime';
+import { Episode } from '../models/Episode';
 import { DataSource, AnimeType, AnimeStatus } from '../types/common';
 import { BaseAnimeProvider } from './BaseProvider';
 import { HttpClient } from '../utils/httpClient';
@@ -276,6 +277,41 @@ export class MyAnimeListProvider extends BaseAnimeProvider {
     };
 
     return statusMap[status?.toLowerCase() || ''] || AnimeStatus.NOT_YET_AIRED;
+  }
+
+  /**
+   * Fetch episodes for an anime from MAL
+   * Note: MAL API has limited episode data, mainly provides count
+   */
+  async fetchEpisodes(animeId: string, externalId: string): Promise<Episode[]> {
+    return this.fetchWithRetry(async () => {
+      // MAL API provides basic episode information
+      const url = `${this.baseUrl}/anime/${externalId}?fields=num_episodes,start_date,broadcast,average_episode_duration`;
+      const data = await this.httpClient.get<MALAnimeNode>(url);
+
+      const episodes: Episode[] = [];
+      const totalEpisodes = data.num_episodes || 0;
+
+      // Create basic episode entries (MAL doesn't provide detailed episode info via API)
+      for (let i = 1; i <= totalEpisodes; i++) {
+        episodes.push({
+          id: `${animeId}-ep-${i}`,
+          animeId,
+          number: i,
+          duration: data.average_episode_duration,
+          externalIds: [
+            {
+              source: DataSource.MYANIMELIST,
+              id: `${externalId}-${i}`,
+            },
+          ],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+
+      return episodes;
+    });
   }
 }
 
@@ -594,6 +630,73 @@ export class AniListProvider extends BaseAnimeProvider {
 
     return new Date(year, month, day);
   }
+
+  /**
+   * Fetch episodes for an anime from AniList
+   */
+  async fetchEpisodes(animeId: string, externalId: string): Promise<Episode[]> {
+    const cacheKey = `anilist-episodes-${externalId}`;
+
+    // Try cache first
+    const cached = this.cache.get(cacheKey);
+    if (cached && Array.isArray(cached) && cached.length > 0 && 'animeId' in cached[0]) {
+      return cached as any as Episode[];
+    }
+
+    return this.fetchWithRetry(async () => {
+      const query = `
+        query ($id: Int) {
+          Media(id: $id, type: ANIME) {
+            id
+            episodes
+            streamingEpisodes {
+              title
+              thumbnail
+              url
+            }
+            airingSchedule {
+              nodes {
+                episode
+                airingAt
+              }
+            }
+          }
+        }
+      `;
+
+      const variables = { id: parseInt(externalId) };
+      const data = await this.httpClient.graphql<{ Media: any }>(query, variables);
+
+      const episodes: Episode[] = [];
+      const totalEpisodes = data.Media.episodes || 0;
+      const airingSchedule = data.Media.airingSchedule?.nodes || [];
+      const streamingEpisodes = data.Media.streamingEpisodes || [];
+
+      // Create episode list from total count and available metadata
+      for (let i = 1; i <= totalEpisodes; i++) {
+        const airingInfo = airingSchedule.find((s: any) => s.episode === i);
+        const streamingInfo = streamingEpisodes.find((_: any, idx: number) => idx + 1 === i);
+
+        episodes.push({
+          id: `${animeId}-ep-${i}`,
+          animeId,
+          number: i,
+          title: streamingInfo?.title,
+          aired: airingInfo ? new Date(airingInfo.airingAt * 1000) : undefined,
+          externalIds: [
+            {
+              source: DataSource.ANILIST,
+              id: `${externalId}-${i}`,
+            },
+          ],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+
+      return episodes;
+    });
+  }
 }
 
 /**
@@ -852,5 +955,56 @@ export class KitsuProvider extends BaseAnimeProvider {
     };
 
     return statusMap[status?.toLowerCase() || ''] || AnimeStatus.NOT_YET_AIRED;
+  }
+
+  /**
+   * Fetch episodes for an anime from Kitsu
+   */
+  async fetchEpisodes(animeId: string, externalId: string): Promise<Episode[]> {
+    const cacheKey = `kitsu-episodes-${externalId}`;
+
+    // Try cache first
+    const cached = this.cache.get(cacheKey);
+    if (cached && Array.isArray(cached) && cached.length > 0 && 'animeId' in cached[0]) {
+      return cached as any as Episode[];
+    }
+
+    return this.fetchWithRetry(async () => {
+      // Kitsu has episodes API endpoint
+      const url = `${this.baseUrl}/anime/${externalId}/episodes?page[limit]=20&page[offset]=0`;
+      const response = await this.httpClient.get<{ data: any[] }>(url);
+
+      const episodes: Episode[] = [];
+
+      for (const ep of response.data || []) {
+        episodes.push({
+          id: `${animeId}-ep-${ep.attributes.number}`,
+          animeId,
+          number: ep.attributes.number,
+          title: ep.attributes.canonicalTitle || ep.attributes.titles?.en,
+          synopsis: ep.attributes.synopsis || ep.attributes.description,
+          duration: ep.attributes.length,
+          aired: ep.attributes.airdate ? new Date(ep.attributes.airdate) : undefined,
+          images: ep.attributes.thumbnail
+            ? {
+                small: ep.attributes.thumbnail.small,
+                medium: ep.attributes.thumbnail.medium || ep.attributes.thumbnail.small,
+                large: ep.attributes.thumbnail.large || ep.attributes.thumbnail.original,
+                original: ep.attributes.thumbnail.original,
+              }
+            : undefined,
+          externalIds: [
+            {
+              source: DataSource.KITSU,
+              id: ep.id,
+            },
+          ],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+
+      return episodes;
+    });
   }
 }

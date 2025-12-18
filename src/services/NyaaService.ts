@@ -67,7 +67,10 @@ export class NyaaService {
 
   constructor(
     private torrentRepository: ITorrentRepository,
-    options: NyaaServiceOptions = {}
+    options: NyaaServiceOptions = {},
+    // optional repositories for associating seasons/episodes
+    private episodeRepository?: import('../repositories/EpisodeRepository').IEpisodeRepository,
+    private seasonRepository?: import('../repositories/EpisodeRepository').ISeasonRepository,
   ) {
     this.logger = new Logger('NyaaService');
     this.nyaa = new NyaaScraper({
@@ -100,6 +103,20 @@ export class NyaaService {
   }
 
   /**
+   * Extract season number from title (e.g. S01, Season 1, S1E12, S01E12)
+   */
+  private extractSeasonNumber(title: string): number | undefined {
+    const patterns = [/[Ss](\d{1,2})[Ee]\d{1,3}/, /Season\s*(\d{1,2})/i, /[Ss](\d{1,2})\b/];
+
+    for (const pattern of patterns) {
+      const match = title.match(pattern);
+      if (match) return parseInt(match[1], 10);
+    }
+
+    return undefined;
+  }
+
+  /**
    * Index torrents for an anime
    */
   async indexAnime(anime: Anime): Promise<Torrent[]> {
@@ -118,16 +135,19 @@ export class NyaaService {
         
         const results = await this.searchNyaa(sanitizedQuery);
 
-        const torrents = results
-          .map((result) => {
+        const mapped = await Promise.all(
+          results.map(async (result) => {
             try {
-              return this.mapNyaaResultToTorrent(result, anime);
+              const t = await this.mapNyaaResultToTorrent(result, anime);
+              return t;
             } catch (error) {
               this.logger.warn(`Failed to map torrent: ${result.title}`, error);
               return null;
             }
-          })
-          .filter((t): t is Torrent => t !== null && this.isValidTorrent(t));
+          }),
+        );
+
+        const torrents = mapped.filter((t): t is Torrent => t !== null && this.isValidTorrent(t));
 
         allTorrents.push(...torrents);
       }
@@ -170,16 +190,19 @@ export class NyaaService {
       const sanitizedQuery = sanitizeSearchQuery(query);
       const results = await this.searchNyaa(sanitizedQuery);
 
-      const torrents = results
-        .map((result) => {
+      const mapped = await Promise.all(
+        results.map(async (result) => {
           try {
-            return this.mapNyaaResultToTorrent(result, anime, episodeNumber);
+            const t = await this.mapNyaaResultToTorrent(result, anime, episodeNumber);
+            return t;
           } catch (error) {
             this.logger.warn(`Failed to map torrent: ${result.title}`, error);
             return null;
           }
-        })
-        .filter((t): t is Torrent => t !== null && this.isValidTorrent(t));
+        }),
+      );
+
+      const torrents = mapped.filter((t): t is Torrent => t !== null && this.isValidTorrent(t));
 
       if (this.options.autoIndex && torrents.length > 0) {
         await this.torrentRepository.saveMany(torrents);
@@ -382,15 +405,17 @@ export class NyaaService {
   /**
    * Map Nyaa result to Torrent model
    */
-  private mapNyaaResultToTorrent(
+  private async mapNyaaResultToTorrent(
     result: NyaaTorrent,
     anime: Anime,
     episodeNumber?: number
-  ): Torrent {
+  ): Promise<Torrent> {
     const metadata = this.extractMetadata(result.title);
     const episodeRange = this.extractEpisodeRange(result.title);
+    const extractedEpisode = episodeNumber ?? this.extractEpisodeNumber(result.title);
+    const extractedSeason = this.extractSeasonNumber(result.title);
 
-    return {
+    const torrent: Torrent = {
       id: uuidv4(),
       nyaaId: result.id,
       title: result.title,
@@ -405,7 +430,7 @@ export class NyaaService {
       downloads: result.downloads,
       publishedAt: new Date(result.date),
       animeId: anime.id,
-      episodeNumber: episodeNumber ?? this.extractEpisodeNumber(result.title),
+      episodeNumber: extractedEpisode,
       episodeRange,
       metadata,
       trusted: result.isTrusted,
@@ -413,6 +438,63 @@ export class NyaaService {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+
+    // If we have a season number and a season repository, link or create the season
+    if (extractedSeason && this.seasonRepository) {
+      try {
+        let season = await this.seasonRepository.findBySeasonNumber(anime.id, extractedSeason);
+        if (!season) {
+          season = {
+            id: uuidv4(),
+            animeId: anime.id,
+            seasonNumber: extractedSeason,
+            title: undefined,
+            episodeCount: undefined,
+            episodes: [],
+            aired: {},
+            externalIds: [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+          season = await this.seasonRepository.save(season);
+        }
+        torrent.seasonId = season.id;
+      } catch (e) {
+        this.logger.warn('Failed to associate season for torrent:', result.title, e);
+      }
+    }
+
+    // If we have an episode number and an episode repository, link or create the episode
+    if (extractedEpisode && this.episodeRepository) {
+      try {
+        let ep = await this.episodeRepository.findByNumber(anime.id, extractedEpisode);
+        if (!ep) {
+          ep = {
+            id: uuidv4(),
+            animeId: anime.id,
+            number: extractedEpisode,
+            title: undefined,
+            titleJapanese: undefined,
+            titleRomaji: undefined,
+            synopsis: undefined,
+            duration: undefined,
+            images: undefined,
+            aired: undefined,
+            filler: false,
+            recap: false,
+            externalIds: [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+          ep = await this.episodeRepository.save(ep);
+        }
+        torrent.episodeIds = [ep.id];
+      } catch (e) {
+        this.logger.warn('Failed to associate episode for torrent:', result.title, e);
+      }
+    }
+
+    return torrent;
   }
 
   /**
@@ -657,12 +739,30 @@ export class NyaaService {
    * Remove duplicate torrents by info hash
    */
   private deduplicateTorrents(torrents: Torrent[]): Torrent[] {
-    const seen = new Set<string>();
-    return torrents.filter((torrent) => {
-      if (seen.has(torrent.infoHash)) return false;
-      seen.add(torrent.infoHash);
-      return true;
-    });
+    // Deduplicate by infoHash or normalized title, keeping the torrent with highest seeders
+    const map = new Map<string, Torrent>();
+
+    const normalize = (s: string) =>
+      s
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim()
+        .replace(/\s+/g, ' ');
+
+    for (const t of torrents) {
+      const key = t.infoHash || normalize(t.title);
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, t);
+      } else {
+        // prefer higher seeders, then newer
+        if (t.seeders > existing.seeders) {
+          map.set(key, t);
+        }
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.seeders - a.seeders);
   }
   /**
    * Check if Nyaa service is enabled and available

@@ -248,6 +248,219 @@ const updated = await miauIndex.refreshTorrent(best.id);
 - `GERMAN`: Alemão
 - `ITALIAN`: Italiano
 - `RUSSIAN`: Russo
+
+## 🎬 Episode & Season Fetching
+
+Miau-Index v1.1.0+ supports detailed episode and season fetching from multiple providers with automatic organization and torrent association.
+
+### Features
+
+- 📺 **Complete Episode Metadata**: Title, synopsis, duration, aired date, images
+- 📅 **Auto Season Organization**: Automatically organizes episodes into seasons (13-episode heuristic)
+- 🔗 **Torrent Association**: Links torrents to specific episodes
+- 🌐 **Multi-Provider Fallback**: Tries multiple providers for episode data
+- 🎯 **Provider-Specific Data**:
+  - **AniList**: GraphQL with airing schedule and streaming metadata
+  - **Kitsu**: Full REST API with detailed episode information
+  - **Jikan**: Complete MAL episode data with filler/recap flags
+  - **MyAnimeList**: Basic episode list from count
+
+### Usage
+
+```typescript
+import { MiauIndex } from '@kitsuneislife/miau-index';
+
+const miauIndex = new MiauIndex();
+
+// Search for anime
+const results = await miauIndex.searchAnime('Steins Gate');
+const anime = results[0];
+
+// Fetch episodes with metadata
+const episodes = await miauIndex.getEpisodes(anime);
+console.log(`Found ${episodes.length} episodes`);
+
+// Display first episode info
+const ep1 = episodes[0];
+console.log(ep1.title);         // "Episode 1: Prologue of the Beginning and End"
+console.log(ep1.synopsis);      // Episode description
+console.log(ep1.duration);      // 24 minutes
+console.log(ep1.aired);         // Date object
+console.log(ep1.filler);        // false
+console.log(ep1.recap);         // false
+
+// Get anime with complete episode data
+const completeData = await miauIndex.getAnimeWithEpisodes(anime.id);
+console.log(completeData.anime);
+console.log(completeData.episodes);
+console.log(completeData.seasons); // Auto-organized seasons
+
+// Seasons are automatically created
+if (completeData.seasons) {
+  completeData.seasons.forEach(season => {
+    console.log(`Season ${season.seasonNumber}: ${season.episodes.length} episodes`);
+  });
+}
+```
+
+### Episode-Torrent Integration
+
+When using the Nyaa extension, episodes and torrents are automatically associated:
+
+```typescript
+const miauIndex = new MiauIndex({
+  enableNyaa: true,
+});
+
+// Search and index
+const results = await miauIndex.searchAnime('Cowboy Bebop');
+const anime = results[0];
+
+// Index torrents (creates episodes automatically)
+await miauIndex.indexTorrents(anime);
+
+// Get complete data with torrents
+const data = await miauIndex.getAnimeWithEpisodes(anime.id);
+
+// Associate torrents with episodes
+await miauIndex.associateTorrentsWithEpisodes(anime.id);
+
+// Get best torrent for specific episode
+const bestForEp1 = await miauIndex.getBestTorrent(anime, 1);
+console.log(`Best torrent for episode 1: ${bestForEp1?.title}`);
+```
+
+### Episode Model
+
+```typescript
+interface Episode {
+  id: string;                    // Unique ID
+  animeId: string;              // Parent anime ID
+  number: number;               // Episode number
+  title?: string;               // Episode title
+  synopsis?: string;            // Episode description
+  duration?: number;            // Duration in minutes
+  aired?: Date;                 // Air date
+  images?: {                    // Episode thumbnail
+    small?: string;
+    medium?: string;
+    large?: string;
+    original?: string;
+  };
+  filler?: boolean;             // Is filler episode
+  recap?: boolean;              // Is recap episode
+  externalIds: ExternalId[];    // Provider IDs
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface AnimeSeason {
+  id: string;
+  animeId: string;
+  seasonNumber: number;
+  title?: string;
+  episodeCount: number;
+  episodes?: string[];          // Episode IDs
+  aired?: {
+    start?: Date;
+    end?: Date;
+  };
+  externalIds: ExternalId[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+## 🌸 Jikan Provider (FREE MyAnimeList Data)
+
+Miau-Index v1.1.0+ includes the Jikan provider - a free, no-API-key provider for MyAnimeList data powered by [Jikan API](https://jikan.moe/).
+
+### Features
+
+- ✅ **Zero Configuration**: No API key required
+- 🌐 **Complete MAL Data**: Full anime information from MyAnimeList
+- 📺 **Episode Support**: Paginated episode fetching with filler/recap flags
+- 📅 **Seasonal Anime**: Browse anime by season and year
+- ⚡ **Rate Limiting**: Respects Jikan's 60 requests/minute limit
+- 💾 **24h Cache**: Matches Jikan's caching strategy
+
+### Auto-Initialization
+
+Jikan is automatically initialized by default:
+
+```typescript
+const miauIndex = new MiauIndex(); // Jikan is ready to use!
+
+// Search uses Jikan (among other providers)
+const results = await miauIndex.searchAnime('Naruto');
+
+// Fetch seasonal anime
+const winter2023 = await miauIndex.getSeasonalAnime(2023, 'winter');
+```
+
+### Priority System
+
+1. **AniList** (open source, no key required)
+2. **Kitsu** (open source, no key required)
+3. **Jikan** (unofficial MAL, no key required) ← **NEW**
+4. **MyAnimeList** (official, requires API key, overrides Jikan)
+
+```typescript
+// Without MAL API key: Uses Jikan for MAL data
+const miauIndex = new MiauIndex(); 
+
+// With MAL API key: Uses official MAL API (overrides Jikan)
+const miauIndexOfficial = new MiauIndex({
+  malApiKey: 'your-mal-client-id',
+});
+```
+
+### Jikan-Specific Features
+
+```typescript
+import { JikanProvider } from '@kitsuneislife/miau-index';
+
+// Use Jikan directly
+const jikan = new JikanProvider();
+
+// Fetch anime by MAL ID
+const anime = await jikan.fetchAnimeById('1'); // Cowboy Bebop
+
+// Search anime
+const results = await jikan.searchAnime('One Piece', 10);
+
+// Get seasonal anime
+const summer2023 = await jikan.getSeasonalAnime(2023, 'summer');
+
+// Fetch episodes (with pagination)
+const episodes = await jikan.fetchEpisodes('anime-id', '21'); // One Piece episodes
+
+// Check availability
+const available = await jikan.isAvailable(); // true
+```
+
+### Rate Limiting & Caching
+
+Jikan respects API limits and caches aggressively:
+
+- **Rate Limit**: 55 requests/minute (stays under 60/min limit)
+- **Cache Duration**: 24 hours (matches Jikan's server-side cache)
+- **Retry Logic**: 3 retries with 2-second delay
+- **Timeout**: 15 seconds per request
+
+Example showing cache benefits:
+
+```typescript
+const jikan = new JikanProvider();
+
+// First call: Hits Jikan API (~200-500ms)
+const anime1 = await jikan.fetchAnimeById('1');
+
+// Second call: From cache (<1ms)
+const anime2 = await jikan.fetchAnimeById('1');
+
+console.log(anime1.id === anime2.id); // true
+```
 - `CHINESE`: Chinês
 - `KOREAN`: Coreano
 - `MULTI`: Múltiplos idiomas

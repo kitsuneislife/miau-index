@@ -1,12 +1,16 @@
 import { Anime } from './models/Anime';
+import { Episode, AnimeSeason } from './models/Episode';
 import { DataSource } from './types/common';
 import { MyAnimeListProvider, AniListProvider, KitsuProvider } from './providers';
+import { JikanProvider } from './providers/JikanProvider';
 import { AnimeUnificationService, UnificationOptions } from './services/AnimeUnificationService';
 import { InMemoryAnimeRepository } from './repositories/AnimeRepository';
 import { Logger } from './utils/logger';
 import { NyaaService, NyaaServiceOptions } from './services/NyaaService';
 import { InMemoryTorrentRepository } from './repositories/TorrentRepository';
+import { InMemoryEpisodeRepository, InMemorySeasonRepository } from './repositories/EpisodeRepository';
 import { Torrent, TorrentSearchFilter, TorrentStats } from './models/Torrent';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Configuration options for MiauIndex
@@ -62,6 +66,8 @@ export interface MiauIndexConfig {
 export class MiauIndex {
   private unificationService: AnimeUnificationService;
   private repository: InMemoryAnimeRepository;
+  private episodeRepository: InMemoryEpisodeRepository;
+  private seasonRepository: InMemorySeasonRepository;
   private providers: Map<DataSource, any> = new Map();
   private logger: Logger;
   private config: MiauIndexConfig;
@@ -74,6 +80,8 @@ export class MiauIndex {
     this.config = config;
     this.logger = new Logger('MiauIndex');
     this.repository = new InMemoryAnimeRepository();
+    this.episodeRepository = new InMemoryEpisodeRepository();
+    this.seasonRepository = new InMemorySeasonRepository();
     this.unificationService = new AnimeUnificationService(this.repository);
 
     // Initialize providers based on configuration
@@ -126,21 +134,36 @@ export class MiauIndex {
       }
     }
 
-    // PRIORITY 3: MyAnimeList provider (requires API key - OPTIONAL)
+    // PRIORITY 2.5: Jikan provider (no API key required - unofficial MAL scraper)
+    const jikanProvider = new JikanProvider();
+    this.providers.set(DataSource.MYANIMELIST, jikanProvider);
+    this.unificationService.registerProvider(jikanProvider);
+    if (preferOpenSources) {
+      preferredSources.push(DataSource.MYANIMELIST);
+    }
+    if (this.config.enableLogging) {
+      this.logger.info('✓ Jikan provider initialized (unofficial MAL, no API key required)');
+    }
+
+    // PRIORITY 3: MyAnimeList provider (requires API key - OPTIONAL, overrides Jikan)
     if (enabledProviders.myAnimeList !== false && malApiKey) {
       const malProvider = new MyAnimeListProvider(malApiKey);
-      this.providers.set(DataSource.MYANIMELIST, malProvider);
+      this.providers.set(DataSource.MYANIMELIST, malProvider); // Overrides Jikan
       this.unificationService.registerProvider(malProvider);
       if (!preferOpenSources) {
-        preferredSources.push(DataSource.MYANIMELIST);
+        // Replace Jikan with official MAL if user wants closed sources
+        const jikanIndex = preferredSources.indexOf(DataSource.MYANIMELIST);
+        if (jikanIndex === -1) {
+          preferredSources.push(DataSource.MYANIMELIST);
+        }
       }
       if (this.config.enableLogging) {
-        this.logger.info('✓ MyAnimeList provider initialized (requires API key)');
+        this.logger.info('✓ MyAnimeList provider initialized (official, replaces Jikan)');
       }
     } else if (enabledProviders.myAnimeList !== false && !malApiKey) {
       if (this.config.enableLogging) {
-        this.logger.warn(
-          '⚠ MyAnimeList provider skipped (no API key provided - using open sources only)'
+        this.logger.info(
+          'ℹ MyAnimeList API key not provided - using Jikan (unofficial MAL scraper) instead'
         );
       }
     }
@@ -355,7 +378,12 @@ export class MiauIndex {
   private initializeNyaaExtension(): void {
     try {
       this.torrentRepository = new InMemoryTorrentRepository();
-      this.nyaaService = new NyaaService(this.torrentRepository, this.config.nyaaOptions);
+      this.nyaaService = new NyaaService(
+        this.torrentRepository,
+        this.config.nyaaOptions,
+        this.episodeRepository,
+        this.seasonRepository,
+      );
 
       if (this.config.enableLogging) {
         this.logger.info('🌸 Nyaa torrent extension initialized successfully');
@@ -511,6 +539,172 @@ export class MiauIndex {
     }
 
     return this.nyaaService.getBestQualityForEpisode(animeId, episodeNumber);
+  }
+
+  /**
+   * Fetch episodes for an anime from available providers
+   * Tries multiple sources and saves to repository
+   */
+  async getEpisodes(anime: Anime): Promise<Episode[]> {
+    // Check if we already have episodes in repository
+    const cached = await this.episodeRepository.findByAnimeId(anime.id);
+    if (cached.length > 0) {
+      return cached;
+    }
+
+    // Try each provider until we get episodes
+    for (const [source, provider] of this.providers.entries()) {
+      if (provider.fetchEpisodes) {
+        try {
+          const externalId = anime.externalIds.find((e) => e.source === source)?.id;
+          if (!externalId) continue;
+
+          const episodes = await provider.fetchEpisodes(anime.id, externalId);
+          
+          if (episodes.length > 0) {
+            // Save to repository
+            await this.episodeRepository.saveMany(episodes);
+            
+            // Auto-organize into seasons if multiple seasons detected
+            await this.organizeIntoSeasons(anime.id, episodes);
+
+            if (this.config.enableLogging) {
+              this.logger.info(
+                `Fetched ${episodes.length} episodes for ${anime.title.romaji} from ${source}`
+              );
+            }
+
+            return episodes;
+          }
+        } catch (error) {
+          this.logger.warn(`Failed to fetch episodes from ${source}:`, error);
+        }
+      }
+    }
+
+    return [];
+  }
+
+  /**
+   * Get anime with full episode information
+   */
+  async getAnimeWithEpisodes(id: string): Promise<{
+    anime: Anime;
+    episodes: Episode[];
+    seasons?: AnimeSeason[];
+  }> {
+    const anime = await this.getById(id);
+    if (!anime) {
+      throw new Error(`Anime not found: ${id}`);
+    }
+
+    const episodes = await this.getEpisodes(anime);
+    const seasons = await this.seasonRepository.findByAnimeId(anime.id);
+
+    return {
+      anime,
+      episodes,
+      seasons: seasons.length > 0 ? seasons : undefined,
+    };
+  }
+
+  /**
+   * Organize episodes into seasons based on episode numbers
+   * Creates seasons automatically for multi-season anime
+   */
+  private async organizeIntoSeasons(animeId: string, episodes: Episode[]): Promise<void> {
+    if (episodes.length === 0) return;
+
+    // Simple heuristic: if there are more than 26 episodes, likely multi-season
+    // Could be enhanced with actual season metadata from providers
+    const episodesPerSeason = 13; // typical 1-cour season
+    const totalEpisodes = episodes.length;
+    
+    if (totalEpisodes > 26) {
+      const seasonCount = Math.ceil(totalEpisodes / episodesPerSeason);
+      
+      for (let s = 1; s <= seasonCount; s++) {
+        const startEp = (s - 1) * episodesPerSeason + 1;
+        const endEp = Math.min(s * episodesPerSeason, totalEpisodes);
+        
+        const seasonEpisodes = episodes.filter(
+          (ep) => ep.number >= startEp && ep.number <= endEp
+        );
+
+        const season: AnimeSeason = {
+          id: uuidv4(),
+          animeId,
+          seasonNumber: s,
+          title: `Season ${s}`,
+          episodeCount: seasonEpisodes.length,
+          episodes: seasonEpisodes,
+          externalIds: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        await this.seasonRepository.save(season);
+      }
+    } else {
+      // Single season anime
+      const season: AnimeSeason = {
+        id: uuidv4(),
+        animeId,
+        seasonNumber: 1,
+        episodeCount: episodes.length,
+        episodes,
+        externalIds: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      await this.seasonRepository.save(season);
+    }
+  }
+
+  /**
+   * Associate existing torrents with episodes based on episode numbers
+   * Useful for syncing after fetching episodes
+   */
+  async associateTorrentsWithEpisodes(animeId: string): Promise<number> {
+    if (!this.torrentRepository) return 0;
+
+    const torrents = await this.torrentRepository.findByAnimeId(animeId);
+    const episodes = await this.episodeRepository.findByAnimeId(animeId);
+    
+    let associated = 0;
+
+    for (const torrent of torrents) {
+      if (torrent.episodeNumber) {
+        const episode = episodes.find((ep) => ep.number === torrent.episodeNumber);
+        if (episode && !torrent.episodeIds?.includes(episode.id)) {
+          torrent.episodeIds = [episode.id];
+          await this.torrentRepository.save(torrent);
+          associated++;
+        }
+      }
+
+      // Handle batch torrents
+      if (torrent.episodeRange) {
+        const rangeEpisodes = episodes.filter(
+          (ep) =>
+            ep.number >= torrent.episodeRange!.start &&
+            ep.number <= torrent.episodeRange!.end
+        );
+        
+        if (rangeEpisodes.length > 0) {
+          torrent.episodeIds = rangeEpisodes.map((ep) => ep.id);
+          await this.torrentRepository.save(torrent);
+          associated++;
+        }
+      }
+    }
+
+    if (this.config.enableLogging && associated > 0) {
+      this.logger.info(`Associated ${associated} torrents with episodes`);
+    }
+
+    return associated;
   }
 
   /**

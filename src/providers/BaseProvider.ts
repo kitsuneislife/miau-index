@@ -1,4 +1,5 @@
 import { Anime } from '../models/Anime';
+import { Episode } from '../models/Episode';
 import { DataSource } from '../types/common';
 
 /**
@@ -24,6 +25,11 @@ export interface IAnimeProvider {
    * Get seasonal anime
    */
   getSeasonalAnime(year: number, season: string): Promise<Anime[]>;
+
+  /**
+   * Fetch episodes for an anime
+   */
+  fetchEpisodes?(animeId: string, externalId: string): Promise<Episode[]>;
 
   /**
    * Check if the provider is available
